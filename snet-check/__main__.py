@@ -69,16 +69,20 @@ def check(hostname, check_443=False, start_port=7000, port_range=1):
     if check_443:
         not_after = _get_not_after(hostname=hostname, port=443)
         if not_after:
-            ret_list[f"{hostname}:443"] = (not_after - now).days
+            ret_list[hostname + ":443"] = (not_after - now).days
     for p in range(port_range):
         port = start_port + p
         not_after = _get_not_after(hostname=hostname, port=port)
         if not_after:
-            ret_list[f"{hostname}:{port}"] = (not_after - now).days
+            expiring = (not_after - now).days
+            ret_list[hostname + ":" + str(port)] = expiring
+            print(" -Endpoint {}:{} [{} days]".format(hostname, port, expiring))
+        else:
+            print(" -Endpoint {}:{} [Fail]".format(hostname, port))
     return ret_list
 
 
-def main(src_dir, update):
+def run(src_dir, update):
     if src_dir[-1] != "/":
         src_dir += "/"
     if not os.path.exists(src_dir):
@@ -87,16 +91,17 @@ def main(src_dir, update):
     report = []
     s_list = glob.glob("{}*.json".format(src_dir))
     if update:
-        # Getting all Services' metadata from Registry
+        # Getting all Services" metadata from Registry
         get_metadata(src_dir)
         s_list = glob.glob("{}*.json".format(src_dir))
     for s in s_list:
         with open(s, "r") as f:
             j = json.load(f)
-            s_name = s.split('/')[-1].replace('.json', '')
+            s_name = s.split("/")[-1].replace(".json", "")
             services_d[s_name] = dict()
             services_d[s_name]["endpoints"] = dict()
             services_d[s_name]["contributors"] = dict()
+            print("Processing {}".format(s_name))
             for g in j["groups"]:
                 for e in g["endpoints"]:
                     if e not in services_d[s_name]["endpoints"]:
@@ -104,17 +109,19 @@ def main(src_dir, update):
                         [hostname, port] = hostname.split(":")
                         exp_days = check(hostname=hostname, start_port=int(port))
                         if exp_days:
-                            services_d[s_name]["endpoints"][e] = exp_days[f"{hostname}:{port}"]
+                            services_d[s_name]["endpoints"][e] = exp_days[hostname + ":" + port]
                         else:
                             services_d[s_name]["endpoints"][e] = -1
             contrib_list = j.get("contributors", [])
+            if not contrib_list:
+                services_d[s_name]["contributors"]["NoName"] = "NoEmail"
             for c in contrib_list:
                 name = c.get("name", None)
                 email = c.get("email_id", None)
                 if name and name not in services_d[s_name]["contributors"]:
                     services_d[s_name]["contributors"][name] = email
             for e, dt in services_d[s_name]["endpoints"].items():
-                lines = [(s.split('/')[-1].replace('.json', ''),
+                lines = [(s.split("/")[-1].replace(".json", ""),
                          name,
                          email,
                          e, dt) for name, email in services_d[s_name]["contributors"].items()]
@@ -122,21 +129,21 @@ def main(src_dir, update):
     return services_d, sorted(report, key=lambda x: x[4])
 
 
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("src",
                         type=str,
                         default=os.environ.get("SNET_CHECK_SRC_DIR", "./"),
                         help="Source directory with services' metadata.")
     parser.add_argument("-u", "--update",
-                        action='store_true',
+                        action="store_true",
                         help="Get all services from Registry.")
     parser.add_argument("-o", "--csv_output",
                         type=str,
                         default=os.environ.get("SNET_CHECK_OUTPUT", "services_report.csv"),
                         help="CSV filename to save the report.")
     args = parser.parse_args()
-    _, report = main(args.src, args.update)
+    _, report = run(args.src, args.update)
     if args.csv_output:
         print("Saving report to {}".format(args.csv_output))
         with open(args.csv_output, "w") as fp:
@@ -145,3 +152,7 @@ if __name__ == '__main__':
             csv_writer.writerow(header)
             for line in report:
                 csv_writer.writerow(line)
+
+
+if __name__ == "__main__":
+    main()
