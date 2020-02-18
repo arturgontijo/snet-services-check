@@ -4,6 +4,7 @@ import argparse
 import glob
 import json
 import csv
+import shutil
 
 import datetime
 import socket
@@ -76,56 +77,61 @@ def check(hostname, check_443=False, start_port=7000, port_range=1):
         if not_after:
             expiring = (not_after - now).days
             ret_list[hostname + ":" + str(port)] = expiring
-            print(" -Endpoint {}:{} [{} days]".format(hostname, port, expiring))
+            print("    └───── {}:{} [{} days]".format(hostname, port, expiring))
         else:
-            print(" -Endpoint {}:{} [Fail]".format(hostname, port))
+            print("    └───── {}:{} [Fail]".format(hostname, port))
     return ret_list
 
 
 def run(src_dir, update):
     if src_dir[-1] != "/":
         src_dir += "/"
-    if not os.path.exists(src_dir):
+    if update:
+        if os.path.exists(src_dir):
+            shutil.rmtree(src_dir)
         os.makedirs(src_dir)
+        # Getting all Services" metadata from Registry
+        get_metadata(src_dir)
+
     services_d = dict()
     report = []
     s_list = glob.glob("{}*.json".format(src_dir))
-    if update:
-        # Getting all Services" metadata from Registry
-        get_metadata(src_dir)
-        s_list = glob.glob("{}*.json".format(src_dir))
     for s in s_list:
-        with open(s, "r") as f:
-            j = json.load(f)
-            s_name = s.split("/")[-1].replace(".json", "")
-            services_d[s_name] = dict()
-            services_d[s_name]["endpoints"] = dict()
-            services_d[s_name]["contributors"] = dict()
-            print("Processing {}".format(s_name))
-            for g in j["groups"]:
-                for e in g["endpoints"]:
-                    if e not in services_d[s_name]["endpoints"]:
-                        hostname = e.replace("https://", "")
-                        [hostname, port] = hostname.split(":")
-                        exp_days = check(hostname=hostname, start_port=int(port))
-                        if exp_days:
-                            services_d[s_name]["endpoints"][e] = exp_days[hostname + ":" + port]
-                        else:
-                            services_d[s_name]["endpoints"][e] = -1
-            contrib_list = j.get("contributors", [])
-            if not contrib_list:
-                services_d[s_name]["contributors"]["NoName"] = "NoEmail"
-            for c in contrib_list:
-                name = c.get("name", None)
-                email = c.get("email_id", None)
-                if name and name not in services_d[s_name]["contributors"]:
-                    services_d[s_name]["contributors"][name] = email
-            for e, dt in services_d[s_name]["endpoints"].items():
-                lines = [(s.split("/")[-1].replace(".json", ""),
-                         name,
-                         email,
-                         e, dt) for name, email in services_d[s_name]["contributors"].items()]
-                report.extend(lines)
+        try:
+            with open(s, "r") as f:
+                j = json.load(f)
+                s_name = s.split("/")[-1].replace(".json", "")
+                services_d[s_name] = dict()
+                services_d[s_name]["endpoints"] = dict()
+                services_d[s_name]["contributors"] = dict()
+                print("Processing {}".format(s_name))
+                for g in j["groups"]:
+                    for e in g["endpoints"]:
+                        if e not in services_d[s_name]["endpoints"]:
+                            hostname = e.replace("https://", "")
+                            [hostname, port] = hostname.split(":")
+                            exp_days = check(hostname=hostname, start_port=int(port))
+                            if exp_days:
+                                services_d[s_name]["endpoints"][e] = exp_days[hostname + ":" + port]
+                            else:
+                                services_d[s_name]["endpoints"][e] = -1
+                contrib_list = j.get("contributors", [])
+                if not contrib_list:
+                    services_d[s_name]["contributors"]["NoName"] = "NoEmail"
+                for c in contrib_list:
+                    name = c.get("name", None)
+                    email = c.get("email_id", None)
+                    if name and name not in services_d[s_name]["contributors"]:
+                        services_d[s_name]["contributors"][name] = email
+                for e, dt in services_d[s_name]["endpoints"].items():
+                    lines = [(s.split("/")[-1].replace(".json", ""),
+                             name,
+                             email,
+                             e, dt) for name, email in services_d[s_name]["contributors"].items()]
+                    report.extend(lines)
+        except Exception as e:
+            print("[ERROR]", str(e))
+            continue
     return services_d, sorted(report, key=lambda x: x[4])
 
 
@@ -148,7 +154,7 @@ def main():
         print("Saving report to {}".format(args.csv_output))
         with open(args.csv_output, "w") as fp:
             csv_writer = csv.writer(fp)
-            header = ["ServiceName", "Contributor", "Email", "Endpoint", "Expiration"]
+            header = ["ServiceName", "Contributor", "Email", "Endpoint", "Expiration(days)"]
             csv_writer.writerow(header)
             for line in report:
                 csv_writer.writerow(line)
