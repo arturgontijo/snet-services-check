@@ -38,17 +38,20 @@ class CustomArgs:
 def get_metadata(dst_dir="./"):
     m = MPEClientCommand(Config(), CustomArgs())
     s = MPEServiceCommand(Config(), CustomArgs())
-    (found, org_id, org_name, owner, members,
-     serviceNames, repositoryNames) = m._getorganizationbyid(org_id="snet")
-    for idx, name in enumerate(serviceNames):
-        name = bytes32_to_str(name)
-        s.args.service_id = name
-        metadata = s._get_service_metadata_from_registry()
-        file_path = "{}{}.json".format(dst_dir, name)
-        with open(file_path, "w") as fp:
-            idx += 1
-            print("{:03} - Saving {}...".format(idx, file_path))
-            json.dump(metadata.m, fp=fp, indent=2)
+    org_id_list = ["snet", "mozi"]
+    for org_id in org_id_list:
+        print("Getting services from '{}'".format(org_id))
+        (_, _, _, _, _, serviceNames, _) = m._getorganizationbyid(org_id=org_id)
+        for idx, name in enumerate(serviceNames):
+            name = bytes32_to_str(name)
+            s.args.org_id = org_id
+            s.args.service_id = name
+            metadata = s._get_service_metadata_from_registry()
+            file_path = "{}{}_{}.json".format(dst_dir, org_id, name)
+            with open(file_path, "w") as fp:
+                idx += 1
+                print("{:03} - Saving {}...".format(idx, file_path))
+                json.dump(metadata.m, fp=fp, indent=2)
 
 
 def _get_not_after(hostname, port):
