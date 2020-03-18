@@ -35,9 +35,11 @@ class CustomArgs:
         self.yes = True
 
 
-def get_metadata(dst_dir="./"):
-    m = MPEClientCommand(Config(), CustomArgs())
-    s = MPEServiceCommand(Config(), CustomArgs())
+def get_metadata(dst_dir="./", network="mainnet"):
+    conf = Config()
+    conf.set_session_network(network, out_f=None)
+    m = MPEClientCommand(conf, CustomArgs())
+    s = MPEServiceCommand(conf, CustomArgs())
     org_id_list = ["snet", "mozi"]
     for org_id in org_id_list:
         print("Getting services from '{}'".format(org_id))
@@ -86,7 +88,7 @@ def check(hostname, check_443=False, start_port=7000, port_range=1):
     return ret_list
 
 
-def run(src_dir, update):
+def run(src_dir, network, update):
     if src_dir[-1] != "/":
         src_dir += "/"
     if update:
@@ -94,7 +96,7 @@ def run(src_dir, update):
             shutil.rmtree(src_dir)
         os.makedirs(src_dir)
         # Getting all Services" metadata from Registry
-        get_metadata(src_dir)
+        get_metadata(src_dir, network)
 
     services_d = dict()
     report = []
@@ -144,6 +146,10 @@ def main():
                         type=str,
                         default=os.environ.get("SNET_CHECK_SRC_DIR", "./"),
                         help="Source directory with services' metadata.")
+    parser.add_argument("-net", "--network",
+                        type=str,
+                        default=os.environ.get("SNET_CHECK_NETWORK", "mainnet"),
+                        help="The Ethereum network (mainnet, ropsten, etc)")
     parser.add_argument("-u", "--update",
                         action="store_true",
                         help="Get all services from Registry.")
@@ -152,7 +158,7 @@ def main():
                         default=os.environ.get("SNET_CHECK_OUTPUT", "services_report.csv"),
                         help="CSV filename to save the report.")
     args = parser.parse_args()
-    _, report = run(args.src, args.update)
+    _, report = run(args.src, args.network, args.update)
     if args.csv_output:
         print("Saving report to {}".format(args.csv_output))
         with open(args.csv_output, "w") as fp:
